@@ -1,0 +1,9 @@
+logs
+
+checkpoint
+
+data/shanghaitech/i3d/test
+data/shanghaitech/i3d/train
+
+data/ucf-crime/i3d/test
+data/ucf-crime/i3d/train
