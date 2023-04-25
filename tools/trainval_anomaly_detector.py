@@ -42,6 +42,14 @@ def fixation(seed):
 def getPath(args):
     return os.path.join(args.model_name, args.dataset, args.backbone, f'att_{args.attention_type}', '{}_{}'.format('none' if args.scheduler is None else args.scheduler, str(args.lr).split('.')[-1]), str(args.max_epoch), args.version)
 
+def load_model(model, gpus, filePath):
+    checkpoint = torch.load(filePath)
+    if len(gpus) > 1:
+        model.module.load_state_dict(checkpoint)
+    else:
+        model.load_state_dict(checkpoint)
+    return model
+
 def main():
     args = RTFMArgumentParser().parse_args()
 
@@ -152,8 +160,8 @@ def main():
 
     if args.resume:
         if os.path.isfile(args.resume):
-            checkpoint = torch.load(args.resume)
-            model.module.load_state_dict(checkpoint)
+            model = load_model(model, args.gpus, args.resume)
+            
             print('>>> Checkpoint {} loaded.'.format(color(args.resume)))
             auc = {'Total': inference(test_loader, model, args, device)} if not args.div else inference_div(test_loader, model, args, device)
 
