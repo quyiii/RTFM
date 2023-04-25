@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0,1 python tools/trainval_anomaly_detector.py --dataset ucf-crime --version test --max_epoch 5000 --lr 0.0001 --attention_type trans

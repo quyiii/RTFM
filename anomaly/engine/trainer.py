@@ -8,6 +8,47 @@ torch.set_default_tensor_type('torch.cuda.FloatTensor')
 from torch.nn import L1Loss, MSELoss, Sigmoid
 from anomaly.losses import SigmoidMAELoss, sparsity_loss, smooth_loss
 
+class att_loss(nn.Module):
+    def __init__(self, alpha, margin):
+        super(att_loss, self).__init__()
+        
+        self.alpha = alpha
+        self.margin = margin
+        self.sigmoid = nn.Sigmoid()
+        self.mae_criterion = SigmoidMAELoss()
+        self.criterion = nn.BCELoss()
+    
+    def forward(
+            self,
+            regular_score, # (regular) video-level classification score of shape Bx1
+            anomaly_score, # (anomaly) video-level classification score of shape Bx1
+            regular_label, # (regular) video-level label of shape B
+            anomaly_label, # (anomaly) video-level label of shape B
+            regular_crest, # (regular) selected top snippet features of shape (Bxn)xtopkxC
+            anomaly_crest, # (anomaly) selected top snippet features of shape (Bxn)xtopkxC
+        ):
+
+        label = torch.cat((regular_label, anomaly_label), 0)
+        anomaly_score = anomaly_score
+        regular_score = regular_score
+
+        score = torch.cat((regular_score, anomaly_score), 0)
+        score = score.squeeze()
+
+        label = label.to(score.device)
+
+        loss_cls = self.criterion(score, label)  # BCE loss in the score space
+
+        loss_anomaly = torch.abs(
+                self.margin - torch.norm(torch.mean(anomaly_crest, dim=1),
+                p=2, dim=1)) # Bxn
+        loss_regular = torch.norm(torch.mean(regular_crest, dim=1), p=2, dim=1) # Bxn
+        loss = torch.mean((loss_anomaly + loss_regular) ** 2)
+
+        loss_total = loss_cls + self.alpha * loss
+
+        return loss_total
+
 class RTFM_loss(nn.Module):
     def __init__(
             self,
@@ -38,22 +79,32 @@ class RTFM_loss(nn.Module):
 
         score = torch.cat((regular_score, anomaly_score), 0)
         score = score.squeeze()
+        
+        # print(score)
 
-        label = label.cuda()
+        # if score.isnan().any():
+        #     print('score error')
+        #     exit()
+        
+        # if regular_crest.isnan().any() or anomaly_crest.isnan().any():
+        #     print('crest error')
+        #     exit()
+
+        label = label.to(score.device)
 
         loss_cls = self.criterion(score, label)  # BCE loss in the score space
 
         loss_anomaly = torch.abs(
                 self.margin - torch.norm(torch.mean(anomaly_crest, dim=1),
-                p=2, dim=1)) # Txn
-        loss_regular = torch.norm(torch.mean(regular_crest, dim=1), p=2, dim=1) # Txn
+                p=2, dim=1)) # Bxn
+        loss_regular = torch.norm(torch.mean(regular_crest, dim=1), p=2, dim=1) # Bxn
         loss = torch.mean((loss_anomaly + loss_regular) ** 2)
 
         loss_total = loss_cls + self.alpha * loss
 
         return loss_total
 
-def do_train(regular_loader, anomaly_loader, model, batch_size, optimizer, device):
+def do_train(regular_loader, anomaly_loader, model, batch_size, optimizer, device, args):
     with torch.set_grad_enabled(True):
         model.train()
 
@@ -65,11 +116,12 @@ def do_train(regular_loader, anomaly_loader, model, batch_size, optimizer, devic
         regular_video, regular_label = next(regular_loader)
         anomaly_video, anomaly_label = next(anomaly_loader)
 
-        input = torch.cat((regular_video, anomaly_video), 0).to(device)
+        input = torch.cat((regular_video, anomaly_video), 0).cuda(device=args.gpus[0])
 
         outputs = model(input)
 
         # >> parse outputs
+        
         anomaly_score = outputs['anomaly_score']
         regular_score = outputs['regular_score']
         anomaly_crest = outputs['feature_select_anomaly']

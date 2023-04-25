@@ -1,5 +1,6 @@
 
 import cv2
+import math
 import torch
 import joblib
 import pickle
@@ -54,9 +55,13 @@ class Dataset(data.Dataset):
         self.transform = transform
         self.test_mode = test_mode
 
-        self._prepare_data(video_list, verbose)
-
         self._prepare_classnames()
+        
+        if self.test_mode:
+            self._prepare_classratios()
+            self._prepare_classlist(video_list)
+
+        self._prepare_data(video_list, verbose)
 
         self.num_frame = 0
         self.labels = None
@@ -67,11 +72,32 @@ class Dataset(data.Dataset):
                         self.subset).joinpath(
                             '{video_id}_{backbone}.npy')
 
+    def _prepare_classratios(self):
+        class_video_num = {'Normal': 150, 'Anomaly': 140, 'RoadAccidents': 23, 'Shooting': 23, 'Explosion': 21, 'Shoplifting': 21, 'Burglary': 13, 'Arson': 9, 'Robbery': 5, 'Stealing': 5, 'Arrest': 5, 'Fighting': 5, 'Vandalism': 5, 'Assault': 3, 'Abuse': 2}
+
+        classratios = {}
+        for classname in self.classnames:
+            if classname != 'Normal':
+                classratios[classname] = math.ceil(class_video_num['Anomaly'] / class_video_num[classname])
+            else:
+                classratios[classname] = 1
+        self.classratios = classratios
+
+    def _prepare_classlist(self, video_list):
+        classlist = {}
+        for classname in self.classnames:
+            classlist[classname] = []
+            for video in video_list:
+                if classname in video:
+                    classlist[classname].append(video)
+        self.classlist = classlist
+
     def _prepare_classnames(self):
         if 'shanghai' in self.dataset:
             self.classnames = []
         elif 'ucf' in self.dataset:
             self.classnames = ['Normal', 'Abuse', 'Arrest', 'Arson', 'Assault', 'Burglary', 'Explosion', 'Fighting', 'RoadAccidents', 'Robbery', 'Shooting', 'Shoplifting', 'Stealing', 'Vandalism']
+
         elif 'xd' in self.dataset:
             self.classnames = []
         else:
@@ -82,13 +108,17 @@ class Dataset(data.Dataset):
         ann_file = self.ann_file
         with open(ann_file, 'r') as fin:
             db = json.load(fin)
-
+        
         ground_truths = list()
+        ground_truths_details = {}
+
         for video_id in video_list:
             labels = db[video_id]['labels']
             ground_truths.append(labels)
+            ground_truths_details[video_id] = np.array(labels)
+
         ground_truths = np.concatenate(ground_truths)
-        return ground_truths
+        return ground_truths, ground_truths_details
 
     def _prepare_data(self, video_list: list, verbose: bool=True):
         if self.test_mode is False:
@@ -98,7 +128,7 @@ class Dataset(data.Dataset):
             self.video_list = video_list[index:] if self.is_normal else video_list[:index]
         else:
             self.video_list = video_list
-            self.ground_truths = self._prepare_frame_level_labels(video_list)
+            self.ground_truths, self.ground_truths_details = self._prepare_frame_level_labels(video_list)
 
         self.data_info = """
     Dataset description: [{state}] mode.

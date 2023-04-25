@@ -20,7 +20,7 @@ from torch.utils.collect_env import get_pretty_env_info
 
 from config import Config
 from anomaly.utilities import PixelBar, Visualizer
-from anomaly.engine import do_train, inference
+from anomaly.engine import do_train, inference, inference_div
 from anomaly.datasets.video_dataset import Dataset
 from anomaly.models.detectors.detector import RTFM
 from anomaly.apis import (
@@ -39,16 +39,21 @@ def fixation(seed):
     np.random.seed(seed)
     random.seed(seed)
 
+def getPath(args):
+    return os.path.join(args.model_name, args.dataset, args.backbone, f'att_{args.attention_type}', '{}_{}'.format('none' if args.scheduler is None else args.scheduler, str(args.lr).split('.')[-1]), str(args.max_epoch), args.version)
+
 def main():
     args = RTFMArgumentParser().parse_args()
 
-    viz = Visualizer(env = f'{args.dataset}-{args.version}', use_incoming_socket=False) if args.viz and not args.inference else None
+    experiment_path = getPath(args)
+
+    viz = Visualizer(env = str(experiment_path).replace('/', '-'), use_incoming_socket=False) if args.viz and not args.inference else None
 
     if not args.inference:
-        mkdir(args.checkpoint_path.joinpath(args.version))
+        mkdir(args.checkpoint_path.joinpath(experiment_path))
     
-    if not os.path.exists(args.log_path.joinpath(args.version)):
-        mkdir(args.log_path.joinpath(args.version))
+    if not os.path.exists(args.log_path.joinpath(experiment_path)):
+        mkdir(args.log_path.joinpath(experiment_path))
 
     if 'shanghaitech' in args.dataset:
         import configs.shanghaitech.shanghaitech_dl as cfg
@@ -69,7 +74,7 @@ def main():
     fixation(seed)
 
     global_rank = get_rank()
-    logger = setup_logger("AnomalyDetection", args.log_path.joinpath(args.version), global_rank, is_train = not args.inference)
+    logger = setup_logger("AnomalyDetection", args.log_path.joinpath(experiment_path), global_rank, is_train = not args.inference)
     logger.info('Arguments \n{info}\n{sep}'.format(info=args, sep='-' * envcols))
 
     env_info = get_pretty_env_info()
@@ -115,6 +120,7 @@ def main():
             pin_memory=False)
 
     model = RTFM(
+            args.attention_type,
             args.feature_size,
             args.batch_size,
             args.quantize_size,
@@ -128,7 +134,9 @@ def main():
     # for name, value in model.named_parameters():
     #     print(name)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model.to(device)
+    if len(args.gpus) > 1:
+        model = torch.nn.DataParallel(model, device_ids=args.gpus)
+    model =  model.cuda(device=args.gpus[0])
 
     optimizer = optim.Adam(
         model.parameters(),
@@ -145,13 +153,13 @@ def main():
     if args.resume:
         if os.path.isfile(args.resume):
             checkpoint = torch.load(args.resume)
-            model.load_state_dict(checkpoint)
+            model.module.load_state_dict(checkpoint)
             print('>>> Checkpoint {} loaded.'.format(color(args.resume)))
-            auc = inference(test_loader, model, args, device)
+            auc = {'Total': inference(test_loader, model, args, device)} if not args.div else inference_div(test_loader, model, args, device)
 
             # >> Performance
-            title = [['Dataset', 'Method', 'Feature', 'AUC (%)']]
-            score = [[args.dataset, args.model_name.upper(), args.backbone.upper(), f'{auc*100.:.3f}']]
+            title = [['Dataset', 'Method', 'Feature', 'Class', 'AUC (%)']]
+            score = [[args.dataset, args.model_name.upper(), args.backbone.upper(), classname, f'{auc_div*100.:.3f}'] for classname, auc_div in auc.items()]
 
             table = AsciiTable(title + score, ' Performance on {} '.format(args.dataset))
             for i in range(len(title[0])):
@@ -188,7 +196,7 @@ def main():
     # >> write title
     filename = log_filename.format(
         data=args.dataset, model=args.model_name)
-    log_filepath = args.log_path.joinpath(args.version).joinpath(filename)
+    log_filepath = args.log_path.joinpath(experiment_path).joinpath(filename)
     if os.path.exists(log_filepath):
         os.remove(log_filepath)
 
@@ -231,7 +239,7 @@ def main():
                 scheduler.step()
             loadera_iter = iter(train_anomaly_loader)
 
-        loss = do_train(loadern_iter, loadera_iter, model, args.batch_size, optimizer, device)
+        loss = do_train(loadern_iter, loadera_iter, model, args.batch_size, optimizer, device, args)
 
         if viz is not None: viz.plot_lines('loss', loss)
 
@@ -260,7 +268,7 @@ def main():
                 filename = checkpoint_filename.format(
                     data=args.dataset, model=args.model_name)
                 torch.save(
-                    model.state_dict(), args.checkpoint_path.joinpath(args.version).joinpath(filename))
+                    model.module.state_dict() if len(args.gpus) > 1 else model.state_dict(), args.checkpoint_path.joinpath(experiment_path).joinpath(filename))
 
                 save_best_record(test_info, log_filepath, metric)
 
