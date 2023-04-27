@@ -19,7 +19,7 @@ class RTFMArgumentParser(Tap):
     gpus: List[int] = [0,1]
     lr: float = 0.001 # learning rates for steps
     scheduler: Optional[str] = None # scheduler for adjust lr
-    batch_size: int = 8 # number of instances in a batch of data (default: 32)
+    batch_size: int = 32 # number of instances in a batch of data (default: 32)
     workers: int = 0 # number of workers in dataloader
     model_name: str = 'rtfm' # name to save model
     dataset: Literal['shanghaitech', 'ucf-crime', 'xd-violence'] = 'shanghaitech' # dataset to train

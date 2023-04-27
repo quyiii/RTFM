@@ -22,7 +22,8 @@ from config import Config
 from anomaly.utilities import PixelBar, Visualizer
 from anomaly.engine import do_train, inference, inference_div
 from anomaly.datasets.video_dataset import Dataset
-from anomaly.models.detectors.detector import RTFM
+from anomaly.models.detectors.detector_rtfm import RTFM
+from anomaly.models.detectors.detector_qy import RTFM_qy
 from anomaly.apis import (
     mkdir, color, AverageMeter,
     setup_logger, setup_tblogger,
@@ -128,6 +129,11 @@ def main():
             pin_memory=False)
 
     model = RTFM(
+            args.attention_type,
+            args.feature_size,
+            args.batch_size,
+            args.quantize_size,
+            args.dropout) if 'trans' not in args.attention_type else RTFM_qy(
             args.attention_type,
             args.feature_size,
             args.batch_size,

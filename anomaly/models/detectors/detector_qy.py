@@ -179,15 +179,15 @@ class Aggregate(nn.Module):
 
             return out
 
-class RTFM(nn.Module):
+class RTFM_qy(nn.Module):
     def __init__(self, attention_type, n_features, batch_size, quantize_size, dropout):
-        super(RTFM, self).__init__()
+        super(RTFM_qy, self).__init__()
         self.batch_size = batch_size
         self.quantize_size = quantize_size
         self.k_abn = self.quantize_size // 10
         self.k_nor = self.quantize_size // 10
 
-        self.Aggregate = Aggregate(len_feature=2048)
+        # self.Aggregate = Aggregate(len_feature=2048)
 
         self.attention_type = attention_type
         if 'gate' in attention_type:
@@ -199,9 +199,9 @@ class RTFM(nn.Module):
         else:
             self.attention = None
 
-        self.fc1 = nn.Linear(n_features, 512)
-        self.fc2 = nn.Linear(512, 128)
-        self.fc3 = nn.Linear(128, 1)
+        # self.fc1 = nn.Linear(n_features, 512)
+        # self.fc2 = nn.Linear(512, 128)
+        # self.fc3 = nn.Linear(128, 1)
 
         self.drop_out = nn.Dropout(dropout)
         self.relu = nn.ReLU()
@@ -224,6 +224,7 @@ class RTFM(nn.Module):
         feat_magnitudes = feat_magnitudes.view(bs, ncrops, -1).mean(1)
         nfea_magnitudes = feat_magnitudes[0:self.batch_size]  # normal feature magnitudes
         afea_magnitudes = feat_magnitudes[self.batch_size:]  # abnormal feature magnitudes
+        # print(feat_magnitudes.shape, self.batch_size, afea_magnitudes.shape)
         n_size = nfea_magnitudes.shape[0]
 
         if nfea_magnitudes.shape[0] == 1:  # this is for inference, the batch size is 1
@@ -235,6 +236,7 @@ class RTFM(nn.Module):
         select_idx = self.drop_out(select_idx)
 
         #######  process abnormal videos -> select top3 feature magnitude  #######
+        
         afea_magnitudes_drop = afea_magnitudes * select_idx
         # B x T -> B x k_abn
         idx_abn = torch.topk(afea_magnitudes_drop, self.k_abn, dim=1)[1]
@@ -405,12 +407,12 @@ class RTFM(nn.Module):
         out = out.view(-1, t, f)
 
         # BN x T x C
-        out = self.Aggregate(out)
+        # out = self.Aggregate(out)
 
-        out = self.drop_out(out)
+        # out = self.drop_out(out)
 
         features = out
-
+        
         results = self.attention(features)
         # B x 1
         scores_cls = results['scores_cls'].view(bs, ncrops, 1).mean(1)

@@ -54,6 +54,7 @@ class TransMIL(nn.Module):
         self.layer2 = TransLayer(dim=512)
         self.norm = nn.LayerNorm(512)
         self._fc2 = nn.Linear(512, self.n_classes)
+        self.sig = nn.Sigmoid()
 
 
     def forward(self, inputs):
@@ -93,10 +94,11 @@ class TransMIL(nn.Module):
 
         #---->predict video level
         logits_cls = self._fc2(h_cls) #[B, n_classes]
+    
         #---->predict instance level 
         logits_ins = self._fc2(h_ins) #[B, T, n_classes]
-        results_dict = {'scores_cls': logits_cls,
-                        'scores_ins': logits_ins,
+        results_dict = {'scores_cls': self.sig(logits_cls),
+                        'scores_ins': self.sig(logits_ins),
                         'features_ins': h_ins}
         return results_dict
 
