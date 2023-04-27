@@ -204,7 +204,7 @@ class RTFM(nn.Module):
         self.drop_out = nn.Dropout(dropout)
         self.relu = nn.ReLU()
         self.sigmoid = nn.Sigmoid()
-        self.softmax = nn.Softmax()
+        self.softmax = nn.Softmax(dim=1)
         self.apply(weight_init)
 
     def get_topk_features_scores(self, features, scores, size):
@@ -328,12 +328,10 @@ class RTFM(nn.Module):
         # calculate score_wight by features
         # BN x T x C -> BN x T x 1
         weights = self.attention(features)
-        # BN x T x 1 -> BN x T
-        weights = self.softmax(weights.squeeze(dim=-1))
-        # BN x T x 1
-        weights_features = weights.unsqueeze(dim=-1)
+        # BN x T x 1 -> BN x T x 1
+        weights = self.softmax(weights)
 
-        return weights_features
+        return weights
 
     def get_weighted_features(self, features, weights):
         # BN x 1 x C
@@ -383,11 +381,11 @@ class RTFM(nn.Module):
         weights_select_abn = self.get_mil_weights(feature_select_anomaly)
         # BN x C
         features_select_abn = self.get_weighted_features(feature_select_anomaly, weights_select_abn)
-        scores_select_abn = self.get_score(features_select_abn).squeeze(dim=-1)
+        scores_select_abn = self.get_score(features_select_abn, ncrops).squeeze(dim=-1)
 
         weights_select_nor = self.get_mil_weights(feature_select_regular)
         features_select_nor = self.get_weighted_features(feature_select_regular, weights_select_nor)
-        scores_select_nor = self.get_score(features_select_nor).squeeze(dim=-1)
+        scores_select_nor = self.get_score(features_select_nor, ncrops).squeeze(dim=-1)
 
         return dict(
             anomaly_score = scores_select_abn,
