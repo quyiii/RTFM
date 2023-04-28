@@ -192,7 +192,7 @@ class RTFM(nn.Module):
         self.attention_type = attention_type
         if 'gate' in attention_type:
             self.attention = GatedAttention(n_features) 
-        elif 'base' in attention_type:
+        elif 'base' in attention_type or 'both' in attention_type:
             self.attention = Attention(n_features)
         else:
             self.attention = None
@@ -333,10 +333,13 @@ class RTFM(nn.Module):
 
         return weights
 
-    def get_weighted_features(self, features, weights):
-        # BN x 1 x C
-        weighted_features = weights.permute(0, 2, 1) @ features
-        
+    def get_weighted_features(self, features, weights, focus=True):
+        if focus:
+            # BN x 1 x C
+            weighted_features = weights.permute(0, 2, 1) @ features
+        else:
+            # BN x T x C
+            weighted_features = weights.expand_as(features) * features
         return weighted_features
 
     def get_score(self, features, ncrops=None):
@@ -396,10 +399,56 @@ class RTFM(nn.Module):
             feature_magnitudes = result['feature_magnitudes']
         )
 
+    def att_both_forward(self, inputs):
+        # inputs B x T x N x C
+
+        out = inputs
+        bs, ncrops, t, f = out.size()
+
+        # BN x T x C
+        out = out.view(-1, t, f)
+
+        # BN x T x C
+        out = self.Aggregate(out)
+
+        out = self.drop_out(out)
+
+        features = out
+
+        # BN x T x C -> B x T x 1
+        t_scores = self.get_score(features, ncrops)
+        
+        result = self.get_topk_features_scores(features, t_scores, (bs, ncrops, t, f))
+
+        # BN x topk x C
+        feature_select_anomaly = result['feature_select_anomaly']
+        feature_select_regular = result['feature_select_regular']
+        
+        weights_select_abn = self.get_mil_weights(feature_select_anomaly)
+        # BN x C
+        feature_focus_abn = self.get_weighted_features(feature_select_anomaly, weights_select_abn)
+        scores_select_abn = self.get_score(feature_focus_abn, ncrops).squeeze(dim=-1)
+
+        weights_select_nor = self.get_mil_weights(feature_select_regular)
+
+        feature_focus_nor = self.get_weighted_features(feature_select_regular, weights_select_nor)
+        scores_select_nor = self.get_score(feature_focus_nor, ncrops).squeeze(dim=-1)
+
+        return dict(
+            anomaly_score = scores_select_abn,
+            regular_score = scores_select_nor, 
+            feature_select_anomaly = feature_focus_abn.unsqueeze(dim=1),
+            feature_select_regular = feature_focus_nor.unsqueeze(dim=1),
+            scores = t_scores,
+            feature_magnitudes = result['feature_magnitudes']
+        )
+
     def forward(self, inputs):
 
         if 'none' in self.attention_type:
             result = self.rtfm_forward(inputs)
+        elif 'both' in self.attention_type:
+            result = self.att_both_forward(inputs)
         else:
             result = self.att_forward(inputs)
         return result

@@ -15,7 +15,7 @@ class RTFMArgumentParser(Tap):
     # ---------------
     backbone: Literal['i3d', 'c3d'] = 'i3d' # default backbone
     feature_size: int = 2048 # size of feature (default: 2048)
-    attention_type: Literal['none', 'gate', 'base', 'trans'] = 'none'
+    attention_type: Literal['none', 'gate', 'base', 'both'] = 'none'
     gpus: List[int] = [0,1]
     lr: float = 0.001 # learning rates for steps
     scheduler: Optional[str] = None # scheduler for adjust lr
