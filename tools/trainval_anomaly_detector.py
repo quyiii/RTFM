@@ -129,12 +129,12 @@ def main():
             pin_memory=False)
 
     model = RTFM(
-            args.attention_type,
+            args,
             args.feature_size,
             args.batch_size,
             args.quantize_size,
             args.dropout) if 'trans' not in args.attention_type else RTFM_qy(
-            args.attention_type,
+            args,
             args.feature_size,
             args.batch_size,
             args.quantize_size,

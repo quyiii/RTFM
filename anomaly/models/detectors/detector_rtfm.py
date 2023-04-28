@@ -180,7 +180,7 @@ class Aggregate(nn.Module):
             return out
 
 class RTFM(nn.Module):
-    def __init__(self, attention_type, n_features, batch_size, quantize_size, dropout):
+    def __init__(self, args, n_features, batch_size, quantize_size, dropout):
         super(RTFM, self).__init__()
         self.batch_size = batch_size
         self.quantize_size = quantize_size
@@ -189,10 +189,10 @@ class RTFM(nn.Module):
 
         self.Aggregate = Aggregate(len_feature=2048)
 
-        self.attention_type = attention_type
-        if 'gate' in attention_type:
+        self.attention_type = args.attention_type
+        if 'gate' in self.attention_type:
             self.attention = GatedAttention(n_features) 
-        elif 'base' in attention_type or 'both' in attention_type:
+        elif 'base' in self.attention_type or 'both' in self.attention_type:
             self.attention = Attention(n_features)
         else:
             self.attention = None
@@ -333,7 +333,9 @@ class RTFM(nn.Module):
 
         return weights
 
-    def get_weighted_features(self, features, weights, focus=True):
+    def get_weighted_features(self, features, weights, focus=True, detach=False):
+        if detach:
+            weights = weights.detach()
         if focus:
             # BN x 1 x C
             weighted_features = weights.permute(0, 2, 1) @ features
@@ -384,10 +386,13 @@ class RTFM(nn.Module):
         weights_select_abn = self.get_mil_weights(feature_select_anomaly)
         # BN x C
         features_select_abn = self.get_weighted_features(feature_select_anomaly, weights_select_abn)
+
         scores_select_abn = self.get_score(features_select_abn, ncrops).squeeze(dim=-1)
 
         weights_select_nor = self.get_mil_weights(feature_select_regular)
+
         features_select_nor = self.get_weighted_features(feature_select_regular, weights_select_nor)
+
         scores_select_nor = self.get_score(features_select_nor, ncrops).squeeze(dim=-1)
 
         return dict(
@@ -426,13 +431,14 @@ class RTFM(nn.Module):
         
         weights_select_abn = self.get_mil_weights(feature_select_anomaly)
         # BN x C
-        feature_focus_abn = self.get_weighted_features(feature_select_anomaly, weights_select_abn)
-        scores_select_abn = self.get_score(feature_focus_abn, ncrops).squeeze(dim=-1)
+        feature_focus_abn = self.get_weighted_features(feature_select_anomaly, weights_select_abn, detach='detach' in self.attention_type)
+
+        scores_select_abn = self.get_score(self.get_weighted_features(feature_select_anomaly, weights_select_abn, detach=False), ncrops).squeeze(dim=-1)
 
         weights_select_nor = self.get_mil_weights(feature_select_regular)
 
-        feature_focus_nor = self.get_weighted_features(feature_select_regular, weights_select_nor)
-        scores_select_nor = self.get_score(feature_focus_nor, ncrops).squeeze(dim=-1)
+        feature_focus_nor = self.get_weighted_features(feature_select_regular, weights_select_nor, detach='detach' in self.attention_type)
+        scores_select_nor = self.get_score(self.get_weighted_features(feature_select_regular, weights_select_nor, detach=False), ncrops).squeeze(dim=-1)
 
         return dict(
             anomaly_score = scores_select_abn,
