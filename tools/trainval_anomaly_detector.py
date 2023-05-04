@@ -30,6 +30,7 @@ from anomaly.apis import (
     synchronize, get_rank,
     RTFMArgumentParser)
 from anomaly.scheduler import get_scheduler
+from anomaly.optimizer import get_optimizer
 
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -41,7 +42,7 @@ def fixation(seed):
     random.seed(seed)
 
 def getPath(args):
-    return os.path.join(args.model_name, args.dataset, args.backbone, f'att_{args.attention_type}', '{}_{}'.format('none' if args.scheduler is None else args.scheduler, str(args.lr).split('.')[-1]), str(args.max_epoch), args.version)
+    return os.path.join(args.model_name, args.dataset, args.backbone, f'att_{args.attention_type}', args.optimizer,'{}_{}'.format('none' if args.scheduler is None else args.scheduler, str(args.lr).split('.')[-1]), str(args.max_epoch), args.version)
 
 def load_model(model, gpus, filePath):
     checkpoint = torch.load(filePath)
@@ -152,10 +153,11 @@ def main():
         model = torch.nn.DataParallel(model, device_ids=args.gpus)
     model =  model.cuda(device=args.gpus[0])
 
-    optimizer = optim.Adam(
-        model.parameters(),
-        lr=config.lr,
-        weight_decay=0.005)
+    optimizer = get_optimizer(args.optimizer, model.module if len(args.gpus) > 1 else model, args.lr, args.weight_decay, args.rho)
+    # optimizer = optim.Adam(
+    #     model.parameters(),
+    #     lr=config.lr,
+    #     weight_decay=0.005)
 
     scheduler = None if args.scheduler is None else get_scheduler(optimizer, args.scheduler, args.max_epoch // len(train_anomaly_loader))
 
@@ -300,7 +302,7 @@ def main():
                 pt = process_time.val,
                 total = bar.elapsed_td,
                 eta = bar.eta_td,
-                lr = optimizer.param_groups[0]['lr'],
+                lr = optimizer.param_groups[0]['lr'] if 'sam' not in args.optimizer else optimizer.optimizer.param_groups[0]['lr'],
                 loss = loss,
                 metric='AUC' if 'xd-violence' not in args.dataset else 'AP',
                 score = score * 100.)

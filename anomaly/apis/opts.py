@@ -17,8 +17,6 @@ class RTFMArgumentParser(Tap):
     feature_size: int = 2048 # size of feature (default: 2048)
     attention_type: Literal['none', 'gate', 'base', 'both', 'both_detach'] = 'none'
     gpus: List[int] = [0,1]
-    lr: float = 0.001 # learning rates for steps
-    scheduler: Optional[str] = None # scheduler for adjust lr
     batch_size: int = 32 # number of instances in a batch of data (default: 32)
     workers: int = 0 # number of workers in dataloader
     model_name: str = 'rtfm' # name to save model
@@ -27,6 +25,15 @@ class RTFMArgumentParser(Tap):
     max_epoch: int = 15000 # maximum iteration to train (default: 15000)
     dropout: float = 0.7 # dropout ratio
     quantize_size: int = 32 # new temporal size for training
+
+    # =================
+    # optimizer setting
+    # =================
+    lr: float = 0.001 # learning rates for steps
+    rho: float = 0.05
+    weight_decay: float = 0.005
+    optimizer: Literal['adam', 'sam_adam'] = 'adam'
+    scheduler: Optional[str] = None # scheduler for adjust lr
 
     # ============ 
     # path setting
